@@ -34,14 +34,14 @@ Making use of the OpenCL version:
 - sudo pip install pyOpenCL
 
 Getting pyPaSWAS:
-pyPaSWAS is required as module:
+pyPaSWAS is required as a module. Run in the following two commands in the ComBaR root folder:
 git submodule init
 git submodule update
 
 Running the software
 -------------------- 
 
-The two input files are mandatory. Through the options the user can specify the file types of the input files (default: fasta), an output file and a log file. When requested, PyPaSWAS will terminate if the output file already exists.
+The two input files are mandatory. Through the options the user can specify the file types of the input files (default: fasta), an output file and a log file. When requested, ComBaR will terminate if the output file already exists.
 
 Run it by calling:
 - *python combar.py |options| file1 file2*
