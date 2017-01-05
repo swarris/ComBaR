@@ -1,4 +1,7 @@
 #!/usr/bin/python
+import sys
+sys.path.append("./pypaswas")
+
 from combar.combarall import ComBaR
 import logging
 

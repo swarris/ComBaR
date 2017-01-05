@@ -1,8 +1,8 @@
 '''
 TODO Add a proper introduction of the package.
 '''
-from pyPaSWAS.pyPaSWAS.Core.Exceptions import InvalidOptionException
-from pyPaSWAS.pyPaSWAS.pyPaSWAS import set_logger, _override_settings, _log_settings_to_file, normalize_file_path
+from pyPaSWAS.Core.Exceptions import InvalidOptionException
+from pyPaSWAS import set_logger, _override_settings, _log_settings_to_file, normalize_file_path
 from datetime import datetime
 import ConfigParser
 import logging

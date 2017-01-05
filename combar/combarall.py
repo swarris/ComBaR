@@ -1,14 +1,13 @@
-from pyPaSWAS import pyPaSWAS
+from pyPaSWAS.pypaswasall import Pypaswas
 from pyPaSWAS.Core import resource_filename
 from pyPaSWAS.Core.Exceptions import InvalidOptionException, ReaderException
 from pyPaSWAS.Core.Readers import BioPythonReader
 from pyPaSWAS.Core.Scores import BasicScore, CustomScore, DnaRnaScore
 from pyPaSWAS.Core.Formatters import SamFormatter, DefaultFormatter
 from pyPaSWAS import set_logger, normalize_file_path 
-
-from combar.Core.Programs import ComBaRMapper,  ComBaRIndexer, GenomePlotter 
+from pyPaSWAS.Core.HitList import HitList 
+from combar.Core.Programs import ComBaRMapper, GenomePlotter 
 from combar.Core.Formatters import PlotterFormatter
-from combar.Core.HitList import HitListComBaR
 from combar import parse_cli
 
 
@@ -16,7 +15,7 @@ import logging
 import os.path
 
 
-class ComBaR(pyPaSWAS):
+class ComBaR(Pypaswas):
     '''
     This class represents the main program. It parses the command line and runs
     one of the programs from the pyPaSWAS suite.
@@ -26,9 +25,7 @@ class ComBaR(pyPaSWAS):
     as used by NCBI blastall version 2.2.21.
     '''
     def __init__(self):
-        pyPaSWAS.__init(self)
-        self.config_file = resource_filename(__name__, '/Core/cfg/defaults.cfg')
-        self._get_default_logger()
+        Pypaswas.__init__(self, config = resource_filename(__name__, '/Core/cfg/defaults.cfg'))
         self.settings = None
         self.arguments = None
 
@@ -84,6 +81,100 @@ class ComBaR(pyPaSWAS):
             self.program = GenomePlotter(self.logger, self.score, self.settings, self.arguments)
             self.logger.warning("Removing limits on length of sequences for genome plotter!")
             self.settings.limit_length = 10**20
+            self.logger.warning("Forcing output to csv for plotting")
+            self.output_format = "plot"
         else:
             raise InvalidOptionException('Invalid program selected {0}'.format(self.settings.program))
 
+    def run(self):
+        '''The main program of pyPaSWAS.'''
+        # Read command-line arguments
+        self.settings, self.arguments = parse_cli(self.config_file)
+        self.logger = set_logger(self.settings)
+        self.logger.info("Initializing application...")
+        self._set_outfile()
+        self._set_scoring_matrix()
+        self.logger.info('Application initialized.')
+        self.logger.info('Setting program...')
+        self._set_output_format()
+        self._set_program()
+        self.logger.info('Program set.')
+        
+        queriesToProcess = True
+        
+        query_start = int(self.settings.start_query)
+        query_end = int(self.settings.start_query) + int(self.settings.query_step)
+        if query_end > int(self.settings.end_query) and int(self.settings.start_query) != int(self.settings.end_query):
+            query_end = int(self.settings.end_query)
+        
+        start_index = int(self.settings.start_target)
+
+        end_index = int(self.settings.start_target) + int(self.settings.sequence_step) 
+        if end_index > int(self.settings.end_target) and int(self.settings.start_target) != int(self.settings.end_target):
+            end_index = int(self.settings.end_target)
+        
+        results = HitList(self.logger)
+        
+        while queriesToProcess:
+            self.logger.info('Reading query sequences {} {}...'.format(query_start, query_end))
+            try:
+                query_sequences = self._get_query_sequences(self.arguments[0], start=query_start, end=query_end)
+                self.logger.info('Query sequences OK.')
+            except ReaderException:
+                queriesToProcess = False
+
+            sequencesToProcess = True
+            if not self.settings.program == "palindrome":
+                start_index = int(self.settings.start_target)
+                end_index = int(self.settings.start_target) + int(self.settings.sequence_step) 
+                if end_index > int(self.settings.end_target) and int(self.settings.start_target) != int(self.settings.end_target):
+                    end_index = int(self.settings.end_target)
+            
+            while queriesToProcess and sequencesToProcess:
+                
+                self.logger.info('Reading target sequences {}, {}...'.format(start_index,end_index))
+                try:
+                    target_sequences = self._get_target_sequences(self.arguments[1], start=start_index, end=end_index)
+                    self.logger.info('Target sequences OK.')
+                except ReaderException:
+                    sequencesToProcess = False
+                    
+    
+                if not sequencesToProcess or not queriesToProcess or len(query_sequences) == 0 or len(target_sequences) == 0:
+                    sequencesToProcess = False
+                    self.logger.info('Processing done')
+                else:
+                    self.logger.info('Processing {0}- vs {1}-sequences'.format(len(query_sequences),
+                                                                            len(target_sequences)))
+                    results.extend(self.program.process(query_sequences, target_sequences, self))
+                
+                if sequencesToProcess and len(target_sequences) <= end_index:
+                    # for palindrome program, skip directly to next
+                    sequencesToProcess = False
+                    self.logger.info('Processing done')
+
+                start_index = start_index + int(self.settings.sequence_step)
+                end_index = end_index + int(self.settings.sequence_step)
+                if  self.settings.program == "palindrome" or (int(self.settings.end_target) > 0 and int(self.settings.end_target) < end_index):
+                    sequencesToProcess = False
+
+            if int(self.settings.end_query) > 0 and int(self.settings.end_query) < query_end:
+                queriesToProcess = False
+            query_start = query_start + int(self.settings.query_step)
+            query_end = query_end + int(self.settings.query_step)
+
+
+        nhits = len(results.hits)
+        # retrieve and print results!
+        self.logger.info('Processing OK ({} hits found).'.format(nhits))
+        if nhits > 0:
+            self.logger.info('Formatting output...')
+            formatter = self._get_formatter(results)
+            self.logger.info('Formatting OK.')
+
+            self.logger.info('Writing output...')
+            formatter.print_results()
+            self.logger.info('Writing OK.')
+            self.logger.info('Finished')
+        else:
+            self.logger.warning('No suitable hits produced, exiting...')
