@@ -1,13 +1,10 @@
 #!/usr/bin/python
-from pyPaSWAS.pypaswasall import Pypaswas
+from combar.combarall import ComBaR
 import logging
 
 if __name__ == '__main__':
-
-    #ppw = Pypaswas()
-    #ppw.run()
     try:
-        ppw = Pypaswas()
+        ppw = ComBaR()
         ppw.run()
     except Exception as exception:
         # Show complete exception when running in DEBUG

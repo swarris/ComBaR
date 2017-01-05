@@ -4,7 +4,7 @@ import sys
 import os.path
 import cPickle
 import zlib
-from SWSeqRecord import SWSeqRecord
+from pyPaSWAS.Core.SWSeqRecord import SWSeqRecord
 from Bio.Seq import Seq
 
 class Indexer:

@@ -1,0 +1,3 @@
+[submodule "pyPaSWAS"]
+	path = pyPaSWAS
+	url = https://github.com/swarris/pyPaSWAS.git

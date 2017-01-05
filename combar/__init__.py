@@ -1,67 +1,14 @@
 '''
 TODO Add a proper introduction of the package.
 '''
-from Core.Exceptions import InvalidOptionException
+from pyPaSWAS.pyPaSWAS.Core.Exceptions import InvalidOptionException
+from pyPaSWAS import set_logger, _override_settings, _log_settings_to_file, normalize_file_path
 from datetime import datetime
 import ConfigParser
 import logging
 import optparse
 import os
 import sys
-
-
-def set_logger(settings):
-    '''
-    This functions creates a logger object that always logs to the command
-    line or optionally to a log file. Refer to the documentation of the
-    standard logging module for more information. The logger object is
-    stored in self.logger.
-
-    the following values should be present in self.settings:
-    string self.settings.logfile: the file to which messages are logged. If
-    logging to a file is not required, this value should be None.
-    int self.settings.loglevel: the threshold level for logging.
-    See the built-in logging module for details.
-    '''
-    # Check log level for validity
-    numeric_level = getattr(logging, settings.loglevel.upper())
-    if not isinstance(numeric_level, int):
-        raise InvalidOptionException('Invalid log level: %s' % settings.loglevel)
-
-    # Root logger, stdout handler will be removed
-    logger = logging.getLogger()
-    lh_stdout = logger.handlers[0]
-    logger.setLevel(numeric_level)
-
-    # Configure logging to console
-    if settings.logfile is None:
-        # Only import when printing to terminal otherwise the ASCI escapes end up in a (log) file
-        from pyPaSWAS.Core.cfg import Colorer
-        console_format = logging.Formatter('%(levelname)s - %(message)s')
-        console_format.propagate = False
-        console_handler = logging.StreamHandler()
-        console_handler.setLevel(numeric_level)
-        console_handler.setFormatter(console_format)
-        logger.addHandler(console_handler)
-
-    elif settings.logfile is not None:
-        # Check log file for validity. For uniformity a ValueError may be raised
-        try:
-            logfile = open(settings.logfile, 'a')
-            _log_settings_to_file(logfile, settings)
-            logfile.close()
-        except(IOError):
-            raise InvalidOptionException('Invalid log file or writing forbidden: %s' % settings.logfile)
-        file_format = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
-        file_format.propagate = False
-        file_handler = logging.FileHandler(settings.logfile)
-        file_handler.setLevel(numeric_level)
-        file_handler.setFormatter(file_format)
-        logger.addHandler(file_handler)
-
-    # Disable root logger (stdout)
-    logger.removeHandler(lh_stdout)
-    return logger
 
 
 def parse_cli(config_file):
@@ -81,8 +28,8 @@ def parse_cli(config_file):
         raise ConfigParser.ParsingError("Unable to parse the defaults file ({})".format(config_file))
 
     parser = optparse.OptionParser()
-    parser.description = ('This program performs a Smith-Waterman alignment of all sequences in FILE_1'
-                          ' against all sequences in FILE_2.\nBoth files should be in the fasta format.')
+    parser.description = ('This program maps all sequences in FILE_1'
+                          ' against all sequences in FILE_2.')
     usage = '%prog [options] FILE_1 FILE_2'
     parser.usage = usage
     # general options
@@ -97,8 +44,7 @@ def parse_cli(config_file):
     general_options.add_option('--outputformat', help='The format of the file in which the program stores the '
                                'generated output.\nAvailable options are TXT and SAM.\nDefaults to txt',
                                dest='out_format', default=config.get('General', 'out_format'))
-    general_options.add_option('-p', '--program', help='The program to be executed. Valid options are "aligner"'
-                               ', "trimmer", "mapper", "plotter" and palindrome (experimental)', dest='program',
+    general_options.add_option('-p', '--program', help='The program to be executed. Valid options are "mapper" and "plotter"', dest='program',
                                default=config.get('General', 'program'))
 
     general_options.add_option('-1', '--filetype1', help='File type of the first file. See bioPython IO for'
@@ -128,13 +74,12 @@ def parse_cli(config_file):
 
 
 
-    aligner_options = optparse.OptionGroup(parser, 'Options that affect the alignment.\nAligners include aligner'
-                                           ' and mapper')
+    aligner_options = optparse.OptionGroup(parser, 'Options that affect the alignment.')
     aligner_options.add_option('--customMatrix', help='the custom matrix that should be used', dest='custom_matrix')
     aligner_options.add_option('-G', help='Float. Penalty for a gap', dest='gap_score',
                                default=config.get('Aligner', 'gap_score'))
     aligner_options.add_option('-M', '--matrixname', help='The scoring to be used. Valid options are '
-                               '"DNA-RNA", "PALINDROME", "BASIC", "Blosum62", "Blosum80" and "CUSTOM"', dest='matrix_name',
+                               '"DNA-RNA", "BASIC" and "CUSTOM"', dest='matrix_name',
                                default=config.get('Aligner', 'matrix_name'))
     aligner_options.add_option('-q', '--mismatch_score', help='Float. Penalty for mismatch', dest='mismatch_score',
                                default=config.get('Aligner', 'mismatch_score'))
@@ -201,25 +146,6 @@ def parse_cli(config_file):
                               default=config.get('Plotter', 'window_length'))
 
     parser.add_option_group(plotter_options)
-
-
-    palindrome_options = optparse.OptionGroup(parser, 'Options related to the Palindrome detector.')
-    palindrome_options.add_option('--query_coverage_slice', help='Minimum fraction of the read in the alignment needed to slice the read in half.', dest='query_coverage_slice',
-                              default=config.get('Palindrome', 'query_coverage_slice'))
-
-    palindrome_options.add_option('--minimum_read_length', help='Minimum length of the read in bp to the saved.', dest='minimum_read_length',
-                              default=config.get('Palindrome', 'minimum_read_length'))
-    parser.add_option_group(palindrome_options)
-
-
-    graph_options = optparse.OptionGroup(parser, 'Options to connect to a neo4j graph database and store mappings in a graph')
-    graph_options.add_option('--hostname',help='Neo4j database host', default=config.get("GraphDatabase", "hostname"), dest="hostname")
-    graph_options.add_option('--username',help='Neo4j user name', default=config.get("GraphDatabase", "username"), dest="username")
-    graph_options.add_option('--password',help='Neo4j password', default=config.get("GraphDatabase", "password"), dest="password")
-    graph_options.add_option('--target_node',help='Target node name', default=config.get("GraphDatabase", "target_node"), dest="target_node")
-    graph_options.add_option('--sequence_node',help='Sequence node name', default=config.get("GraphDatabase", "sequence_node"), dest="sequence_node")
-
-    parser.add_option_group(graph_options)
     
     device_options = optparse.OptionGroup(parser, 'Options that affect the usage and settings of the '
                                           'parallel devices')
@@ -273,57 +199,3 @@ def parse_cli(config_file):
         raise InvalidOptionException('Missing input files')
 
     return (settings, arguments)
-
-
-def _override_settings(config_file, settings, arguments):
-    ''' Parse optional config file and change arguments accordingly '''
-    config = ConfigParser.ConfigParser()
-
-    try:
-        config.read(config_file)
-    except ConfigParser.ParsingError:
-        raise ConfigParser.ParsingError("Unable to parse the given configuration file ({})".format(config_file))
-
-    # Replace input files with those given in the config file
-    #if config.get('General', 'FILE1') != '' and config.get('General', 'FILE2') != '':
-    #    arguments = [config.get('General', 'FILE1'), config.get('General', 'FILE2')]
-    #    config.remove_option('General', 'FILE1')
-    #    config.remove_option('General', 'FILE2')
-
-    # Replace all other settings set in the config file
-    sections = config.sections()
-    for section in sections:
-        section_settings = [name for name, setting in config.items(section)]
-        for setting in section_settings:
-            if config.get(section, setting):
-                settings._update_careful({setting: config.get(section, setting)})
-
-    return (settings, arguments)
-
-
-def _log_settings_to_file(logfile_handle, settings):
-    ''' Prints all settings in effect using the given log file handle '''
-    # Print analysis start time
-    today = datetime.today()
-    logfile_handle.write("\n{}\n".format('-' * 74))
-    logfile_handle.write(today.strftime("pyPaSWAS run started at: %Y-%m-%d %H:%M:%S"
-                                        " using the following settings:\n"))
-    logfile_handle.write("{}\n".format('-' * 74))
-
-    # Iterate all settings and write to log file
-    for setting, value in vars(settings).iteritems():
-        if value == None:
-            value = 'N/A'
-        setting_table = "{0:30}".format(setting), ':', "{0:>30}\n".format(value)
-        logfile_handle.write(''.join(setting_table))
-
-    logfile_handle.write("{}\n".format('-' * 74))
-
-
-def normalize_file_path(path):
-    '''creates an absolute path from a relative path'''
-    if not os.path.isabs(path):
-        curdir = os.getcwd()
-        path = os.path.join(curdir, path)
-    path = os.path.normpath(path)
-    return path
