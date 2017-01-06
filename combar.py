@@ -1,6 +1,7 @@
 #!/usr/bin/python
 import sys
-sys.path.append("./pypaswas")
+import os
+sys.path.append(os.path.dirname(os.path.realpath(__file__)) +"/pypaswas")
 
 from combar.combarall import ComBaR
 import logging
