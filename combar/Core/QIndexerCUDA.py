@@ -271,7 +271,7 @@ class QIndexerCUDA(QIndexer):
     def createHitlist(self, sequencesToProcess):
         hitlist = HitList(self.logger)
         if len(self.tupleSet.keys())> 0:
-            keys = self.tupleSet.keys()[:100]
+            keys = self.tupleSet.keys()[:1000]
         else:
             return None
         for key in keys:
