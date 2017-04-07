@@ -50,9 +50,16 @@ class Indexer:
         self.logger.info("At indices: {}, {}, {}".format(self.indexCount, self.indicesStep, self.indicesStepSize))
         return self.indexCount == self.indicesStep+1 or (self.indexCount == 0 and self.indicesStep == 0)
 
+    def setWindowLengthToReadLength(self,reads):
+        self.wSize = list(set(map(lambda x : len(x) , reads)))
+        self.wSize = sorted(self.wSize)
 
-    def createIndex(self, sequence, fileName = None, retainInMemory=True):
-        currentTupleSet = {}
+
+    def createIndex(self, sequence, fileName = None, retainInMemory=True, copyToDevice = True):
+        if retainInMemory:
+            currentTupleSet = self.tupleSet
+        else:
+            currentTupleSet = {}
         self.tupleSet = {}
         self.prevCount = self.indexCount
         self.indexCount = 0

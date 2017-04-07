@@ -17,6 +17,9 @@ __global__ void setToZero(float *comps);
 extern "C"
 __global__ void calculateQgrams(char *sequence, unsigned int q, unsigned int length, float *comps, float windowLength, float step, float fraction, char nAs);
 
+extern "C"
+__global__ void calculateQgramsReads(char *sequence, unsigned int q, unsigned int length, float *comps, float fraction, char nAs);
+
 
 __global__ void calculateDistance(int *index, int *query, float *distances, unsigned int *validComps,
 		unsigned int *seqs,
@@ -103,6 +106,40 @@ __global__ void calculateQgrams(char *sequence, unsigned int q, unsigned int len
 			for (unsigned int i =startWindow; i < endWindow; i++){
 				atomicAdd(&comps[i * (INDEX_SIZE+1)+localQgram], fraction);
 			}
+
+		}
+
+	}
+
+}
+
+__global__ void calculateQgramsReads(char *sequence, unsigned int q, unsigned int length, float *comps, float fraction, char nAs) {
+	unsigned int seqLocation = threadIdx.x + length * blockIdx.x;
+	if (threadIdx.x < length - q) {
+		int localQgram = 0;
+		int bit = 1;
+		//for (int i=q-1; i >= 0; i--) {
+		for (int i=0; i < q; i++) {
+			if (localQgram >= 0) {
+				char character = sequence[seqLocation+i];
+				//if (character == 'N') 
+				//	character = nAs;
+				switch (character) {
+					case 'A' : break;
+					case 'T' : localQgram+=1*bit; break;
+					case 'C' : localQgram+=2*bit; break;
+					case 'G' : localQgram+=3*bit; break;
+					default : localQgram = -1;
+				}
+				bit *= q;
+			}
+		}
+		if (localQgram >= 0) {
+			localQgram++;
+			unsigned int startWindow = blockIdx.x;
+			comps[(startWindow * (INDEX_SIZE+1))]= (float)length;
+
+			atomicAdd(&comps[startWindow * (INDEX_SIZE+1)+localQgram], fraction);
 
 		}
 

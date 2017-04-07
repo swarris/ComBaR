@@ -112,9 +112,12 @@ class QIndexerOCL(QIndexer):
         self.logger.info("At indices: {}, {}, {}".format(self.indexCount, self.indicesStep, self.indicesStepSize))
         return self.indexCount <= self.indicesStep or (self.indexCount == 0 and self.indicesStep == 0)
 
-    def createIndex(self, sequence, fileName = None, retainInMemory=True):
+    def createIndex(self, sequence, fileName = None, retainInMemory=True, copyToDevice = True):
         #QIndexer.createIndex(self, sequence, fileName, retainInMemory)
-        currentTupleSet = {}
+        if retainInMemory:
+            currentTuplseSet = self.tupleSet
+        else:
+            currentTupleSet = {}
         self.tupleSet = {}
         self.prevCount = self.indexCount
         self.indexCount = 0
@@ -197,7 +200,7 @@ class QIndexerOCL(QIndexer):
                     
         self.tupleSet = currentTupleSet
         keys = self.tupleSet.keys()
-        if len(keys) > 0 :
+        if len(keys) > 0 and copytoDevice:
             self.logger.info("Preparing index for device, size: {}".format(len(keys)))
             compAll = [numpy.array(k, dtype=numpy.int32) for k in keys]
             self._copy_index(compAll)

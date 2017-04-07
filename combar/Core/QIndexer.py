@@ -15,6 +15,7 @@ class QIndexer (Indexer):
         self.character_list = None
         self.generate_character_list(qgram)
         self.character_index = {}
+        self.indexCount = 0
         self.indicesStep = 0
         self.block = 1000 # only for parallel devices
         index = 1
@@ -40,19 +41,20 @@ class QIndexer (Indexer):
             n = seq.count("N", start_index, end_index)
             length = float(end_index - start_index - n)
             if length-self.qgram+1 > 0 :
-                fraction = self.compositionScale / float(length-self.qgram+1)
+                fraction = self.compositionScale / float(length-self.qgram+1)                
                 for qgram_string in range(start_index, end_index-self.qgram):
                     subStr = str(seq[qgram_string:qgram_string + self.qgram])
                     
                     if "N" not in subStr and subStr in self.character_index and len(subStr.strip()) == len(self.character_list[0]):
-                        results[self.character_index[subStr]] += fraction 
+                        results[self.character_index[subStr]] += fraction
+            
         r = results.view(int)
         
         r[:] = results
         return(csc_matrix(r, dtype=numpy.int32))
 
-    def createIndexAndStore(self, sequence, fileName, retainInMemory=True):
-        self.createIndex(sequence, fileName, retainInMemory)
+    def createIndexAndStore(self, sequence, fileName, retainInMemory=True, copyToDevice = True):
+        self.createIndex(sequence, fileName, retainInMemory, copyToDevice)
 
     def pickleName(self, fileName, length):
         if self.indicesStep == None:

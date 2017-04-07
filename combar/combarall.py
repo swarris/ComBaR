@@ -6,7 +6,7 @@ from pyPaSWAS.Core.Scores import BasicScore, CustomScore, DnaRnaScore
 from pyPaSWAS.Core.Formatters import SamFormatter, DefaultFormatter
 from pyPaSWAS import set_logger, normalize_file_path 
 from pyPaSWAS.Core.HitList import HitList 
-from combar.Core.Programs import ComBaRMapper, GenomePlotter 
+from combar.Core.Programs import ComBaRMapper, GenomePlotter,ReadDistance, QGramLinker
 from combar.Core.Formatters import PlotterFormatter
 from combar import parse_cli
 
@@ -78,7 +78,7 @@ class ComBaR(Pypaswas):
             self.logger.warning("Removing limits on length of sequences for ComBaR mapping!")
             self.settings.limit_length = 10**20
         elif self.settings.program == "plotter":
-            self.program = GenomePlotter(self.logger, self.score, self.settings, self.arguments)
+            self.program = QGramLinker(self.logger, self.score, self.settings, self.arguments)
             self.logger.warning("Removing limits on length of sequences for genome plotter!")
             self.settings.limit_length = 10**20
             self.logger.warning("Forcing output to csv for plotting")
@@ -118,7 +118,10 @@ class ComBaR(Pypaswas):
         while queriesToProcess:
             self.logger.info('Reading query sequences {} {}...'.format(query_start, query_end))
             try:
-                query_sequences = self._get_query_sequences(self.arguments[0], start=query_start, end=query_end)
+                if self.settings.program == "plotter":
+                    query_sequences = self._get_target_sequences(self.arguments[0], start=query_start, end=query_end)
+                else:
+                    query_sequences = self._get_query_sequences(self.arguments[0], start=query_start, end=query_end)
                 self.logger.info('Query sequences OK.')
             except ReaderException:
                 queriesToProcess = False

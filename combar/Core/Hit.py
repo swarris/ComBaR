@@ -76,3 +76,26 @@ class Distance(Hit):
             return 0.0
         else:
             return self.target_info.distance
+
+    def keys(self):
+        '''Returns a list of tuples that will be used as keys for this hit in a hitlist.'''
+        if self.get_seq_id is not None and self.get_target_id is not None:
+            return [(self.get_seq_id(), self.get_target_id()),
+                    (self.get_seq_id(), self.get_target_id()),
+                    (self.get_seq_id(), self.get_target_id())]
+        else:
+            return None
+
+
+class QGramLink(Distance):
+    def __init__(self, logger, sequence_info, target_info, sequence_location, target_location):
+       Distance.__init__(self, logger, sequence_info, target_info, sequence_location, target_location)
+
+    def keys(self):
+        '''Returns a list of tuples that will be used as keys for this hit in a hitlist.'''
+        if self.get_seq_id is not None and self.get_target_id is not None:
+            return [(self.get_seq_id(), self.get_target_id(), self.seq_location[0], self.target_location[0]),
+                    (self.get_seq_id(), self.get_target_id(), self.seq_location[1], self.target_location[1]),
+                    (self.get_seq_id(), self.get_target_id(), self.seq_location[0], self.target_location[0])]
+        else:
+            return None

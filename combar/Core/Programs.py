@@ -35,13 +35,13 @@ class ComBaRMapper(Aligner):
             #create indexer
             
             if self.qindexerOCL:
-                from pyPaSWAS.Core.QIndexerOCL import QIndexerOCL
+                from QIndexerOCL import QIndexerOCL
                 indexer = QIndexerOCL(self.settings, self.logger, 0.1, records_seqs[0:1], int(self.settings.qgram))
             elif self.qindexerCUDA:
-                from pyPaSWAS.Core.QIndexerCUDA import QIndexerCUDA
+                from QIndexerCUDA import QIndexerCUDA
                 indexer = QIndexerCUDA(self.settings, self.logger, 0.1, records_seqs[0:1], int(self.settings.qgram))                
             else:
-                from pyPaSWAS.Core.QIndexer import QIndexer
+                from QIndexer import QIndexer
                 indexer = QIndexer(self.settings, self.logger, 0.1, records_seqs[0:1], int(self.settings.qgram))
             """
             indexer = QIndexer(self.settings, self.logger, 0.1, records_seqs[0:1], int(self.settings.qgram))
@@ -150,17 +150,17 @@ class GenomePlotter(Aligner):
         dummySeq = [SWSeqRecord(Seq(str(seq.seq[0:window]), seq.seq.alphabet), seq.id, 0, original_length = len(seq.seq), distance = 0, refID = seq.id)]
 
         if self.qindexerOCL:
-            from pyPaSWAS.Core.QIndexerOCL import QIndexerOCL, GenomePlotter
+            from QIndexerOCL import QIndexerOCL, GenomePlotter
             indexer = QIndexerOCL(self.settings, self.logger, 0.1, dummySeq, int(self.settings.qgram), block, indexStepSize, nAs='A')
             #plotter = GenomePlotter(indexer, dummySeq, block, indexStepSize)                                                                                                                            
         elif self.qindexerCUDA:
-            from pyPaSWAS.Core.QIndexerCUDA import QIndexerCUDA, GenomePlotter
+            from QIndexerCUDA import QIndexerCUDA, GenomePlotter
             block = 10
             indexStepSize=1000
             indexer = QIndexerCUDA(self.settings, self.logger, 0.1, dummySeq, int(self.settings.qgram), block, indexStepSize, nAs='A')
             #plotter = GenomePlotter(indexer, dummySeq, block, indexStepSize)                                                                                                                            
         else:
-            from pyPaSWAS.Core.QIndexer import QIndexer
+            from QIndexer import QIndexer
             indexer = QIndexer(self.settings, self.logger, 0.1, dummySeq, int(self.settings.qgram))
 
         self.logger.debug("Starting indexer on targets")
@@ -205,4 +205,141 @@ class GenomePlotter(Aligner):
         self.logger.debug('Genome plotter finished.')
         return self.hitlist
 
+class QGramLinker(Aligner):
+    
+    def __init__(self, logger, score, settings, arguments):
+        Aligner.__init__(self, logger, score, settings)
+        self.arguments = arguments
+        self.qindexerCUDA = False
+        self.qindexerOCL = False
+        if (self.settings.framework.upper() == 'OPENCL'):
+            self.qindexerOCL = True
+        else:
+            self.qindexerCUDA = True
+
+
+    def process(self, records_seqs, targets, pypaswas):
+        '''This methods creates indices and determines differences between sequences.
+        '''
+
         
+        # step through the targets                                                                                                                                                                           
+        # step through the targets                                                                                                                                                                          
+        self.logger.debug('QGramLinker...')
+        self.logger.info("Clearing output file")
+        formatter = pypaswas._get_formatter(self.hitlist)
+        formatter.open()
+        indexer = None
+
+        window = int(self.settings.window_length)
+        stepSize = int(0.1 * window)
+        block = 100
+        indexStepSize = 1000
+
+        seq = records_seqs[0]
+        dummySeq = [SWSeqRecord(Seq(str(seq.seq[0:window]), seq.seq.alphabet), seq.id, 0, original_length = len(seq.seq), distance = 0, refID = seq.id)]
+
+        if self.qindexerOCL:
+            from QIndexerOCL import QIndexerOCL, GenomePlotter
+            indexer = QIndexerOCL(self.settings, self.logger, 0.1, dummySeq, int(self.settings.qgram), block, indexStepSize, nAs='A')
+            #plotter = GenomePlotter(indexer, dummySeq, block, indexStepSize)                                                                                                                            
+        elif self.qindexerCUDA:
+            from QIndexerCUDA import QIndexerCUDA, GenomePlotter
+            block = 10
+            indexStepSize=1000
+            indexer = QIndexerCUDA(self.settings, self.logger, 0.1, dummySeq, int(self.settings.qgram), block, indexStepSize, nAs='A')
+            #plotter = GenomePlotter(indexer, dummySeq, block, indexStepSize)                                                                                                                            
+        else:
+            from QIndexer import QIndexer
+            indexer = QIndexer(self.settings, self.logger, 0.1, dummySeq, int(self.settings.qgram))
+
+        sequencesToProcess = records_seqs + targets
+        indexer.compositionScale = 1000.0
+        self.logger.debug("Starting linkage process {}".format(len(sequencesToProcess)))
+
+        while indexer.indicesToProcessLeft():
+            indexer.createIndexAndStore(sequencesToProcess, self.arguments[1], copyToDevice=False)
+        
+        self.hitlist = indexer.createHitlist(sequencesToProcess)
+        while self.hitlist != None:
+            if len(self.hitlist.real_hits) > 0 :
+                formatter.print_results(self.hitlist)
+            self.hitlist = indexer.createHitlist(sequencesToProcess)
+
+        if indexer != None and self.qindexerCUDA:
+            indexer.pop_context()
+        
+        formatter.close()
+        self.logger.debug('QGramLinker finished.')
+        return HitList(self.logger)
+
+class ReadDistance(Aligner):
+    
+    def __init__(self, logger, score, settings, arguments):
+        Aligner.__init__(self, logger, score, settings)
+        self.arguments = arguments
+        self.qindexerCUDA = False
+        self.qindexerOCL = False
+        if (self.settings.framework.upper() == 'OPENCL'):
+            self.qindexerOCL = True
+        else:
+            self.qindexerCUDA = True
+
+    def process(self, records_seqs, targets, pypaswas):
+        '''This methods creates index files for targets based on the length of the records.
+        '''
+
+        formatter = pypaswas._get_formatter(self.hitlist)
+        formatter.open()
+        
+        # step through the targets                                                                                                                                                                           
+        self.logger.debug('Read distance calculations...')
+        window = int(self.settings.window_length)
+
+        indexer = None
+        block = 10
+        indexStepSize=10
+        if self.qindexerCUDA:
+            from QIndexerCUDA import ReadDistance
+            indexer = ReadDistance(self.settings, self.logger, 0.1, records_seqs[0:1], int(self.settings.qgram), block, indexStepSize, nAs='A')                
+
+        while indexer.indexCount < len(targets):
+            self.logger.info("Starting with {} target {}".format(indexer.indexCount, targets[indexer.indexCount].id))
+            indexer.createIndexAndStore(targets, self.arguments[1])
+            seqIndexer = ReadDistance(self.settings, self.logger, 0.1, records_seqs[0:1], int(self.settings.qgram), block, indexStepSize, nAs='A')
+            seqIndexer.setQIndexer(indexer)
+            while seqIndexer.indexCount < len(records_seqs):
+                self.logger.info("Starting with {} query {}".format(seqIndexer.indexCount, records_seqs[seqIndexer.indexCount].id))
+                seqIndexer.createIndexAndStore(records_seqs, self.arguments[0])
+                allLocations = seqIndexer.findDistances()
+                for a in xrange(len(allLocations)):
+                    locations = allLocations[a]
+                    locs = []
+                    if (len(locations) > 0):
+                        for value in locations.itervalues():
+                            locs.extend(value)
+                        for loc in locs:
+                            distance = loc[2]
+                            targetID = targets[loc[1][1] + loc[1][0]/len(records_seqs[0])].id
+                            targetStartIndex = 0
+                            refID = loc[1][1]
+                            seqRefID = loc[0][1]
+                            seqID = records_seqs[loc[0][1] + loc[0][0]/len(records_seqs[0])].id
+                            seqStartIndex = 0
+                            if targetID != seqID:
+                                t = SWSeqRecord(Seq("", targets[0].seq.alphabet), targetID, targetStartIndex, original_length = 0, distance = distance, refID = targetID)
+                                s = SWSeqRecord(Seq("", targets[0].seq.alphabet), seqID, seqStartIndex, original_length = 0, distance = distance, refID = seqID)
+                                newHit = Distance(self.logger, s, t, (0,window), (targetStartIndex, targetStartIndex+window))
+                                newHit.score = -t.distance
+                                self.hitlist.add(newHit)
+                            #self.logger.debug("Target {}, read {}, distance {}".format(t, s, newHit.score))                                                                                                 
+                formatter.print_results(self.hitlist)
+    
+                self.hitlist = HitList(self.logger)
+        
+        if indexer != None and self.qindexerCUDA:
+            indexer.pop_context()                             
+        self.logger.debug('ReadDistance finished.')
+        return self.hitlist
+        
+

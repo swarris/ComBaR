@@ -3,6 +3,7 @@ from string import Template
 import numpy
 import scipy
 import math
+import hashlib
 from scipy.sparse import csc_matrix
 
 import pycuda.driver as driver
@@ -10,9 +11,12 @@ from pycuda.compiler import SourceModule
 
 from pyPaSWAS.Core import resource_filename, read_file
 from pyPaSWAS.Core.Exceptions import HardwareException, InvalidOptionException
+from pyPaSWAS.Core.HitList import HitList
 
 from QIndexer import QIndexer
 from numpy import int32
+from Hit import Distance, QGramLink
+from timeit import itertools
 
 class QIndexerCUDA(QIndexer):
 
@@ -67,6 +71,7 @@ class QIndexerCUDA(QIndexer):
         
         self.calculate_distance_function = self.module.get_function("calculateDistance")
         self.calculate_qgrams_function = self.module.get_function("calculateQgrams")
+        self.calculate_qgrams_reads_function = self.module.get_function("calculateQgramsReads")
         self.setToZero_function = self.module.get_function("setToZero")
 
     def _init_memory(self):
@@ -96,17 +101,19 @@ class QIndexerCUDA(QIndexer):
         self.logger.info("At indices: {}, {}, {}".format(self.indexCount, self.indicesStep, self.indicesStepSize))
         return self.indexCount <= self.indicesStep or (self.indexCount == 0 and self.indicesStep == 0)
 
-    def createIndex(self, sequence, fileName = None, retainInMemory=True):
+    def createIndex(self, sequence, fileName = None, retainInMemory=True, copyToDevice = True):
         #QIndexer.createIndex(self, sequence, fileName, retainInMemory)
+        #if retainInMemory:
+        #    currentTupleSet = self.tupleSet
+        #else:
         currentTupleSet = {}
-        self.tupleSet = {}
+        #self.tupleSet = {} @Fix
         self.prevCount = self.indexCount
         self.indexCount = 0
         numberOfWindowsToCalculate = 0
         seqCompleted = False
-        
         for window in self.wSize:
-            self.tupleSet = {}
+            #self.tupleSet = {} @Fix
             seqId = 0
             #self.logger.debug("if window: {} < {} + {}".format(self.indexCount, self.indicesStep,  self.indicesStepSize))
             while not seqCompleted and seqId < len(sequence) and self.indexCount < self.indicesStep + self.indicesStepSize:
@@ -133,7 +140,7 @@ class QIndexerCUDA(QIndexer):
 
                     self.indexCount += startWindow + numberOfWindowsToCalculate
                     self.logger.debug("Creating index of {} with window {}".format(sequence[seqId].id, window))
-                    self.logger.debug("Will process #windows: {}".format(numberOfWindowsToCalculate))
+                    #self.logger.debug("Will process #windows: {}".format(numberOfWindowsToCalculate))
                     startIndex = startWindow * revWindowSize
                     endIndex = numberOfWindowsToCalculate * revWindowSize + startIndex + window
                     seqToIndex = str(sequence[seqId].seq[startIndex:endIndex]).upper() 
@@ -165,12 +172,14 @@ class QIndexerCUDA(QIndexer):
                     # add comps to tuple set
                     for w in xrange(numberOfWindowsToCalculate):
                         count = tuple(comps[w*(len(self.character_list)+1):(w+1)*(len(self.character_list)+1)])
+                        if not copyToDevice:
+                            count = hashlib.sha224(str([int(x) for x in count])).hexdigest()
                         if count not in self.tupleSet:
                             self.tupleSet[count] = [] 
                         self.tupleSet[count].append((startIndex+ w*revWindowSize, seqId))
                     
                 
-                    currentTupleSet.update(self.tupleSet)
+                    #currentTupleSet.update(self.tupleSet) @Fix
                     if endIndex >= len(sequence[seqId]):
                         seqId += 1
 
@@ -178,11 +187,12 @@ class QIndexerCUDA(QIndexer):
                 self.indexCount = self.indicesStep + self.indicesStepSize+1
         self.indicesStep = self.indexCount if self.indexCount <= self.indicesStep +self.indicesStepSize else self.indicesStep
                     
-        self.tupleSet = currentTupleSet
-        keys = self.tupleSet.keys()
-        self.logger.info("Preparing index for GPU, size: {}".format(len(keys)))
-        compAll = [numpy.array(k, dtype=numpy.int32) for k in keys]
-        self._copy_index(compAll)
+        #self.tupleSet = currentTupleSet @Fix
+        if copyToDevice:
+            keys = self.tupleSet.keys()
+            self.logger.info("Preparing index for GPU, size: {}".format(len(keys)))
+            compAll = [numpy.array(k, dtype=numpy.int32) for k in keys]
+            self._copy_index(compAll)
         #self._copy_index(keys)
 
     
@@ -223,6 +233,7 @@ class QIndexerCUDA(QIndexer):
         driver.memcpy_htod(self.d_comp, comp)
       
         self.logger.debug("Calculating distances")
+
         self.calculate_distance_function(self.d_compAll, self.d_comp, self.d_distances, self.d_validComps, self.d_seqs, self.d_index_increment, numpy.float32(self.compositionScale),
                                          numpy.int32(len(seqs)), numpy.int32(len(keys)), numpy.float32(self.sliceDistance), 
                                      block=self.dim_block, 
@@ -241,6 +252,7 @@ class QIndexerCUDA(QIndexer):
         validComps = numpy.ndarray(buffer=self.h_validComps, dtype=numpy.int32, shape=(1,len(self.h_validComps)))[0]
         validSeqs = numpy.ndarray(buffer=self.h_seqs, dtype=numpy.int32, shape=(1,len(self.h_seqs)))[0]
         self.logger.debug("Process {} valid compositions".format(numberOfValidComps))
+        
         hits = []
         for s in xrange(len(seqs)):
             hits.append({})
@@ -251,9 +263,38 @@ class QIndexerCUDA(QIndexer):
                 if hit[1] not in hits[validSeqs[s]]:
                     hits[validSeqs[s]][hit[1]] = []
                 hits[validSeqs[s]][hit[1]].extend([(hit, self.wSize[loc], distances[s])])
-
+        
         return hits
 
+    
+
+    def createHitlist(self, sequencesToProcess):
+        hitlist = HitList(self.logger)
+        if len(self.tupleSet.keys())> 0:
+            keys = self.tupleSet.keys()[:100]
+        else:
+            return None
+        for key in keys:
+            values = self.tupleSet[key]
+            done = set()
+            
+            # (linkA, linkB)
+            
+            links = itertools.combinations(values, 2)
+            for l in links:
+                linkA = l[0]
+                linkB = l[1]
+                if linkA != linkB and not ((linkA,linkB) in done or (linkB, linkA) in done):
+                    s = sequencesToProcess[linkA[1]]
+                    t = sequencesToProcess[linkB[1]]
+                    s.distance = 1.0
+                    t.distance = 1.0
+                    newHit = QGramLink(self.logger, s, t, (linkA[0],linkA[0]+1), (linkB[0], linkB[0]+1))
+                    hitlist.append(newHit)
+                    done.add((linkA, linkB))
+            del self.tupleSet[key]
+        return hitlist
+    
 class GenomePlotter(QIndexerCUDA):
 
     def __init__(self, qindexer, reads = [], block = None,indicesStepSize= None, nAs = 'N'):
@@ -316,4 +357,150 @@ class GenomePlotter(QIndexerCUDA):
                     hits[validSeqs[s]][hit[1]].extend([(hit, hitQindexer , distances[s])])
         return hits
 
+class ReadDistance(QIndexerCUDA):
+
+    def __init__(self, settings, logger, stepFactor = 0.1, reads= [], qgram=1, block = None, indicesStepSize= None, nAs = 'N'):
+        QIndexerCUDA.__init__(self, settings, logger, stepFactor, reads, qgram, block)
+        self.indexCount = 0
+        self._init_memory_compAll()
+        
+
+    def _init_memory_compAll(self):
+        self.h_compAll = driver.pagelocked_empty(( self.readsToProcess * (len(self.character_list)+1), 1), numpy.int32, mem_flags=driver.host_alloc_flags.DEVICEMAP)
+        self.d_compAll = numpy.intp(self.h_compAll.base.get_device_pointer())
+        self.h_compAll_index = driver.pagelocked_empty((  self.readsToProcess * (len(self.character_list)+1), 1), numpy.float32, mem_flags=driver.host_alloc_flags.DEVICEMAP)
+        self.d_compAll_index = numpy.intp(self.h_compAll_index.base.get_device_pointer())
+
+    def setQIndexer(self, qindexer):
+        self.calculate_distance_function = qindexer.calculate_distance_function
+        self.calculate_qgrams_function = qindexer.calculate_qgrams_function
+        self.calculate_qgrams_reads_function = qindexer.calculate_qgrams_reads_function
+        self.setToZero_function = qindexer.setToZero_function
+        self.qindexer = qindexer
+        self.device = qindexer.device
+        
+
+
+    def createIndex(self, sequence, fileName = None, retainInMemory=True, copyToDevice = True):
+        #QIndexer.createIndex(self, sequence, fileName, retainInMemory)
+        currentTupleSet = {}
+        self.tupleSet = {}
+        numberOfWindowsToCalculate = self.readsToProcess
+        if numberOfWindowsToCalculate+self.indexCount > len(sequence):
+            numberOfWindowsToCalculate = len(sequence) - self.indexCount
+        done = False
+        
+        self.tupleSet = {}
+        seqId = self.indexCount
+        startIndex = 0
+        endIndex = len(sequence[seqId])
+        seqToIndex = ""
+        addedToSeq = 0
+        prevLength = 0
+        for sId in range(seqId, seqId+numberOfWindowsToCalculate):
+            toAdd = str(sequence[sId].seq[startIndex:endIndex]).upper()
+
+            if prevLength > 0:
+                if len(toAdd) == prevLength:
+                    seqToIndex = seqToIndex + toAdd
+                    addedToSeq += 1
+            else:
+                seqToIndex = toAdd
+                prevLength = len(toAdd)
+                addedToSeq += 1
+        numberOfWindowsToCalculate = addedToSeq
+        self.logger.debug("Will process #windows: {}".format(numberOfWindowsToCalculate))
+        #seqToIndex = seqToIndex + "N" * (window-len(seqToIndex))
+        seqHost = numpy.array(seqToIndex, dtype=numpy.character)
+        seqMem = driver.pagelocked_empty((len(seqToIndex), 1), numpy.byte, mem_flags=driver.host_alloc_flags.DEVICEMAP) 
+        seqGPU = numpy.intp(seqMem.base.get_device_pointer()) #driver.mem_alloc(len(seqToIndex)) #
+        driver.memcpy_htod(seqGPU, seqHost)
+                        
+        # set comps to zero
+        dim_grid = (self.readsToProcess/self.block, self.block,1)
+        dim_block = (len(self.character_list), 1,1)
+        self.setToZero_function(self.d_compAll_index, block=dim_block, grid=dim_grid)
+
+        driver.Context.synchronize() 
+        # perform count on gpu 
+        dim_grid = (int(math.ceil(len(seqToIndex)/float(endIndex))), 1,1)
+        dim_block = (endIndex, 1,1)
+        self.logger.debug("Calculating qgram per location in sequence. q={}, length={}, block={}, grid={}".format(
+            self.qgram, len(seqToIndex), dim_block, dim_grid))
+        self.calculate_qgrams_reads_function(seqGPU, numpy.int32(self.qgram), numpy.int32(endIndex), self.d_compAll_index,
+                                             numpy.float32(self.compositionScale / float(endIndex-self.qgram+1)), 
+                                             numpy.uint8(ord(self.nAs)),
+                                             block=dim_block, 
+                                             grid=dim_grid)
+        driver.Context.synchronize() 
+        comps = numpy.ndarray(buffer=self.h_compAll_index, dtype=numpy.float32, shape=(1,len(self.h_compAll_index)))[0].tolist()
+        # add comps to tuple set
+        for w in xrange(numberOfWindowsToCalculate):
+            count = tuple(comps[w*(len(self.character_list)+1):(w+1)*(len(self.character_list)+1)])
+            #self.logger.debug(count)
+            if count not in self.tupleSet:
+                self.tupleSet[count] = [] 
+            self.tupleSet[count].append((0, self.indexCount+w))
+                    
+                
+        currentTupleSet.update(self.tupleSet)
+        self.indexCount += numberOfWindowsToCalculate
+        self.tupleSet = currentTupleSet
+        keys = self.tupleSet.keys()
+        if len(keys) >= 0 :
+            self.logger.info("Preparing index for GPU, size: {}".format(len(keys)))
+            compAll = [numpy.array(k, dtype=numpy.int32) for k in keys]
+            self._copy_index(compAll)
+        #self._copy_index(keys)
+
+    def findDistances(self, start = 0.0, step=False):
+        self.seqs = self.qindexer.tupleSet.keys()
+        keys = self.tupleSet.keys()
+         
+        
+        # setup device parameters
+        self.dim_grid = (self.readsToProcess/self.block, self.block*len(self.seqs),1)
+        self.dim_block = (len(self.character_list), 1,1)
+        #init memory
+        self._init_memory()
+
+        # create index to see how many compositions are found:
+        self.d_index_increment = driver.mem_alloc(4)
+        index = numpy.zeros((1), dtype=numpy.int32)
+        driver.memcpy_htod(self.d_index_increment, index)
+
+      
+        self.logger.debug("Calculating distances")
+        self.calculate_distance_function(self.d_compAll, self.qindexer.d_compAll, self.d_distances, self.d_validComps, self.d_seqs, self.d_index_increment, numpy.float32(self.compositionScale),
+                                         numpy.int32(len(self.seqs)), numpy.int32(len(keys)), numpy.float32(self.sliceDistance), 
+                                     block=self.dim_block, 
+                                     grid=self.dim_grid)
+
+        driver.Context.synchronize() 
+
+        self.logger.debug("Getting distances")
+
+        distances = numpy.ndarray(buffer=self.h_distances, dtype=numpy.float32, shape=(1,len(self.h_distances)))[0]
+        
+        numberOfValidComps = numpy.zeros((1), dtype=numpy.int32)
+        driver.memcpy_dtoh(numberOfValidComps, self.d_index_increment)
+        numberOfValidComps = numberOfValidComps[0]
+        
+        validComps = numpy.ndarray(buffer=self.h_validComps, dtype=numpy.int32, shape=(1,len(self.h_validComps)))[0]
+        validSeqs = numpy.ndarray(buffer=self.h_seqs, dtype=numpy.int32, shape=(1,len(self.h_seqs)))[0]
+        self.logger.debug("Process {} valid compositions".format(numberOfValidComps))
+        hits = []
+        for s in xrange(len(self.seqs)):
+            hits.append({})
+        for s in xrange(numberOfValidComps):
+            valid = keys[validComps[s]]
+            for hit in self.tupleSet[valid]:
+                if hit[1] not in hits[validSeqs[s]]:
+                    hits[validSeqs[s]][hit[1]] = []
+                for hitQindexer in self.qindexer.tupleSet[self.seqs[validSeqs[s]]]:
+                    hits[validSeqs[s]][hit[1]].extend([(hit, hitQindexer , distances[s])])
+        
+        return hits
+        
+   
 
