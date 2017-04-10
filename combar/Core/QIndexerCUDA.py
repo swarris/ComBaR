@@ -107,13 +107,15 @@ class QIndexerCUDA(QIndexer):
         #    currentTupleSet = self.tupleSet
         #else:
         currentTupleSet = {}
-        #self.tupleSet = {} @Fix
+        if copyToDevice:
+            self.tupleSet = {}
         self.prevCount = self.indexCount
         self.indexCount = 0
         numberOfWindowsToCalculate = 0
         seqCompleted = False
         for window in self.wSize:
-            #self.tupleSet = {} @Fix
+            if copyToDevice:
+                self.tupleSet = {}
             seqId = 0
             #self.logger.debug("if window: {} < {} + {}".format(self.indexCount, self.indicesStep,  self.indicesStepSize))
             while not seqCompleted and seqId < len(sequence) and self.indexCount < self.indicesStep + self.indicesStepSize:
@@ -178,8 +180,8 @@ class QIndexerCUDA(QIndexer):
                             self.tupleSet[count] = [] 
                         self.tupleSet[count].append((startIndex+ w*revWindowSize, seqId))
                     
-                
-                    #currentTupleSet.update(self.tupleSet) @Fix
+                    if copyToDevice:
+                        currentTupleSet.update(self.tupleSet) 
                     if endIndex >= len(sequence[seqId]):
                         seqId += 1
 
@@ -187,8 +189,8 @@ class QIndexerCUDA(QIndexer):
                 self.indexCount = self.indicesStep + self.indicesStepSize+1
         self.indicesStep = self.indexCount if self.indexCount <= self.indicesStep +self.indicesStepSize else self.indicesStep
                     
-        #self.tupleSet = currentTupleSet @Fix
         if copyToDevice:
+            self.tupleSet = currentTupleSet
             keys = self.tupleSet.keys()
             self.logger.info("Preparing index for GPU, size: {}".format(len(keys)))
             compAll = [numpy.array(k, dtype=numpy.int32) for k in keys]
@@ -266,35 +268,7 @@ class QIndexerCUDA(QIndexer):
         
         return hits
 
-    
-
-    def createHitlist(self, sequencesToProcess):
-        hitlist = HitList(self.logger)
-        if len(self.tupleSet.keys())> 0:
-            keys = self.tupleSet.keys()[:1000]
-        else:
-            return None
-        for key in keys:
-            values = self.tupleSet[key]
-            done = set()
-            
-            # (linkA, linkB)
-            
-            links = itertools.combinations(values, 2)
-            for l in links:
-                linkA = l[0]
-                linkB = l[1]
-                if linkA != linkB and not ((linkA,linkB) in done or (linkB, linkA) in done):
-                    s = sequencesToProcess[linkA[1]]
-                    t = sequencesToProcess[linkB[1]]
-                    s.distance = 1.0
-                    t.distance = 1.0
-                    newHit = QGramLink(self.logger, s, t, (linkA[0],linkA[0]+1), (linkB[0], linkB[0]+1))
-                    hitlist.append(newHit)
-                    done.add((linkA, linkB))
-            del self.tupleSet[key]
-        return hitlist
-    
+        
 class GenomePlotter(QIndexerCUDA):
 
     def __init__(self, qindexer, reads = [], block = None,indicesStepSize= None, nAs = 'N'):

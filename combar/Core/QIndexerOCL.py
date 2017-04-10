@@ -1,6 +1,7 @@
 import math
 import numpy
 import scipy
+import hashlib
 from scipy.sparse import csc_matrix
 import pyopencl as cl
 from string import Template
@@ -118,14 +119,16 @@ class QIndexerOCL(QIndexer):
             currentTuplseSet = self.tupleSet
         else:
             currentTupleSet = {}
-        self.tupleSet = {}
+        if copyToDevice:
+            self.tupleSet = {}
         self.prevCount = self.indexCount
         self.indexCount = 0
         numberOfWindowsToCalculate = 0
         seqCompleted = False
         
         for window in self.wSize:
-            self.tupleSet = {}
+            if copyToDevice:
+                self.tupleSet = {}
             seqId = 0
             while int(self.reverseWindowSize(window)*self.stepFactor*self.slideStep) > 0 and not seqCompleted and seqId < len(sequence) and self.indexCount < self.indicesStep + self.indicesStepSize:
                 # get sequence
@@ -185,12 +188,15 @@ class QIndexerOCL(QIndexer):
                     # add comps to tuple set
                     for w in xrange(numberOfWindowsToCalculate):
                         count = tuple(comps[w*(len(self.character_list)+1):(w+1)*(len(self.character_list)+1)])
+                        if not copyToDevice:
+                            count = hashlib.sha224(str([int(x) for x in count])).hexdigest()
                         if count not in self.tupleSet:
                             self.tupleSet[count] = [] 
                         self.tupleSet[count].append((startIndex+ w*revWindowSize, seqId))
                     
                 
-                    currentTupleSet.update(self.tupleSet)
+                    if copyToDevice:
+                        currentTupleSet.update(self.tupleSet)
                     if endIndex >= len(sequence[seqId]):
                         seqId += 1
 
@@ -198,15 +204,16 @@ class QIndexerOCL(QIndexer):
                 self.indexCount = self.indicesStep + self.indicesStepSize+1
         self.indicesStep = self.indexCount if self.indexCount <= self.indicesStep +self.indicesStepSize else self.indicesStep
                     
-        self.tupleSet = currentTupleSet
-        keys = self.tupleSet.keys()
-        if len(keys) > 0 and copytoDevice:
-            self.logger.info("Preparing index for device, size: {}".format(len(keys)))
-            compAll = [numpy.array(k, dtype=numpy.int32) for k in keys]
-            self._copy_index(compAll)
-        else: # stop processing
-            self.indexCount = 1
-            self.indicesStep = 0
+        if copyToDevice:
+            self.tupleSet = currentTupleSet
+            keys = self.tupleSet.keys()
+            if len(keys) > 0:
+                self.logger.info("Preparing index for device, size: {}".format(len(keys)))
+                compAll = [numpy.array(k, dtype=numpy.int32) for k in keys]
+                self._copy_index(compAll)
+            else: # stop processing
+                self.indexCount = 1
+                self.indicesStep = 0
 
 
     def findIndices(self,seqs, start = 0.0, step=False):

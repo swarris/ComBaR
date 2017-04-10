@@ -23,7 +23,7 @@ class PlotterFormatter(DefaultFormatter):
             targetLoc = (hit.target_info.original_length - hit.target_location[0], hit.target_info.original_length - hit.target_location[1])
             distance = -distance
             
-        return '\t'.join([seqID, str(seqLoc[0]), str(seqLoc[1]), targetID, str(targetLoc[0]),str(targetLoc[1]), "distance="+str(hit.target_info.distance)])+"\n"
+        return '\t'.join([seqID, str(seqLoc[0]), str(seqLoc[1]), targetID, str(targetLoc[0]),str(targetLoc[1]), "distance="+str(distance)])+"\n"
 
     def print_results(self, hitlist):
         self.hitlist = hitlist

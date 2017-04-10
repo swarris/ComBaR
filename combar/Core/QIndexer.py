@@ -1,9 +1,13 @@
 import math
 import numpy
 import scipy
+import itertools
 from scipy.sparse import csc_matrix
 
 from Indexer import Indexer
+from Hit import Distance, QGramLink
+
+from pyPaSWAS.Core.HitList import HitList
 
 
 class QIndexer (Indexer):
@@ -100,3 +104,40 @@ class QIndexer (Indexer):
                     hits[-1][hit[1]].extend([(hit, self.wSize[loc], self.distance_calc(valid, comp))])
         return hits
     
+    def createHitlist(self, sequencesToProcess):
+        maxLinks = 10000
+        maxValues = math.sqrt(maxLinks)
+        processedLinks = 0
+
+        hitlist = HitList(self.logger)
+        if len(self.tupleSet.keys())> 0:
+            keys = self.tupleSet.keys()[:maxLinks]
+        else:
+            return None
+        for key in keys:
+            values = self.tupleSet[key]
+            done = set()
+            if len(values) > maxValues:
+                del self.tupleSet[key]
+                self.logger.warning("Extreemly highly repetative link found. Skipping this one")
+                return hitlist
+
+            # (linkA, linkB)
+            links = itertools.combinations(values, 2)
+            for l in links:
+                linkA = l[0]
+                linkB = l[1]
+                if linkA != linkB and not ((linkA,linkB) in done or (linkB, linkA) in done):
+                    s = sequencesToProcess[linkA[1]]
+                    t = sequencesToProcess[linkB[1]]
+                    s.distance = 1.0
+                    t.distance = 1.0
+                    newHit = QGramLink(self.logger, s, t, (linkA[0],linkA[0]+1), (linkB[0], linkB[0]+1))
+                    hitlist.append(newHit)
+                    done.add((linkA, linkB))
+                    processedLinks += processedLinks
+
+            del self.tupleSet[key]
+            if processedLinks > maxLinks:
+                return hitlist
+        return hitlist

@@ -234,7 +234,7 @@ class QGramLinker(Aligner):
         window = int(self.settings.window_length)
         stepSize = int(0.1 * window)
         block = 100
-        indexStepSize = 1000
+        indexStepSize = 10000
 
         seq = records_seqs[0]
         dummySeq = [SWSeqRecord(Seq(str(seq.seq[0:window]), seq.seq.alphabet), seq.id, 0, original_length = len(seq.seq), distance = 0, refID = seq.id)]
@@ -254,7 +254,7 @@ class QGramLinker(Aligner):
             indexer = QIndexer(self.settings, self.logger, 0.1, dummySeq, int(self.settings.qgram))
 
         sequencesToProcess = records_seqs + targets
-        indexer.compositionScale = 1000.0
+        indexer.compositionScale = 100.0
         self.logger.debug("Starting linkage process {}".format(len(sequencesToProcess)))
 
         while indexer.indicesToProcessLeft():
