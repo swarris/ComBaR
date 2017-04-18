@@ -34,6 +34,7 @@ class Indexer:
         self.wSize = sorted(self.wSize)
         self.indicesStep = None
         self.indexCount = 0
+        self.prevCount = 0
         
     def count(self, seq, window, start_index, end_index):
         self.logger.error("Indexer.count needs to by implemented by subclass. Maybe use QIndexer?")
@@ -169,9 +170,9 @@ class Indexer:
             self.indexCount += 1 + self.prevCount if self.prevCount == 0 else self.prevCount     
             self.tupleSet.update(tSet)
             dump.close()
-        except:
+        except Exception as e:
             self.logger.warning("Could not open pickle file: "+ self.pickleName(fileName, selectedWindow))
-            self.logger.warning("Error: " +  str(sys.exc_info()[0]))
+            self.logger.warning("{}".format(e))
             return False
         return True
 

@@ -7,7 +7,7 @@ from pyPaSWAS.Core.SWSeqRecord import SWSeqRecord
 from Bio.Seq import Seq
 from Hit import Distance
 from pyPaSWAS.Core.Hit import Hit
-
+from QIndexer import QIndexer
 
 class ComBaRMapper(Aligner):
     
@@ -217,7 +217,40 @@ class QGramLinker(Aligner):
         else:
             self.qindexerCUDA = True
 
+    def createIndex(self, sequences, fileName):
+        window = int(self.settings.window_length)
+        stepSize = int(0.1 * window)
+        block = 100
+        indexStepSize = 10000
+        
+        indexer = None
 
+        seq = sequences[0]
+        dummySeq = [SWSeqRecord(Seq(str(seq.seq[0:window]), seq.seq.alphabet), seq.id, 0, original_length = len(seq.seq), distance = 0, refID = seq.id)]
+
+        if self.qindexerOCL:
+            from QIndexerOCL import QIndexerOCL, GenomePlotter
+            indexer = QIndexerOCL(self.settings, self.logger, 0.1, dummySeq, int(self.settings.qgram), block, indexStepSize, nAs='A')
+        elif self.qindexerCUDA:
+            from QIndexerCUDA import QIndexerCUDA, GenomePlotter
+            block = 10
+            indexStepSize=10000
+            indexer = QIndexerCUDA(self.settings, self.logger, 0.1, dummySeq, int(self.settings.qgram), block, indexStepSize, nAs='A')
+        else:
+            from QIndexer import QIndexer
+            indexer = QIndexer(self.settings, self.logger, 0.1, dummySeq, int(self.settings.qgram))
+
+        indexer.compositionScale = 1000.0
+        if not indexer.unpickle(fileName): 
+            while indexer.indicesToProcessLeft():
+                indexer.createIndexAndStore(sequences, fileName, copyToDevice=False)
+
+            
+        if indexer != None and self.qindexerCUDA:
+            indexer.pop_context()
+            
+        return indexer.tupleSet
+            
     def process(self, records_seqs, targets, pypaswas):
         '''This methods creates indices and determines differences between sequences.
         '''
@@ -229,6 +262,48 @@ class QGramLinker(Aligner):
         self.logger.info("Clearing output file")
         formatter = pypaswas._get_formatter(self.hitlist)
         formatter.open()
+
+        self.logger.debug("Starting linkage process")
+
+        recordsTupleSet = self.createIndex(records_seqs, self.arguments[0])
+        targetsTupleSet = self.createIndex(targets, self.arguments[1])
+        
+        self.hitlist = QIndexer.createHitlist(recordsTupleSet, targetsTupleSet, records_seqs, targets, self.logger, self.settings)
+        while self.hitlist != None:
+            if len(self.hitlist.real_hits) > 0 :
+                formatter.print_results(self.hitlist)
+            self.hitlist = QIndexer.createHitlist(recordsTupleSet, targetsTupleSet, records_seqs, targets, self.logger, self.settings)
+
+        self.logger.debug("Continue with second index")
+        self.hitlist = QIndexer.createHitlist(targetsTupleSet, recordsTupleSet, targets, records_seqs, self.logger, self.settings)
+        while self.hitlist != None:
+            if len(self.hitlist.real_hits) > 0 :
+                formatter.print_results(self.hitlist)
+            self.hitlist = QIndexer.createHitlist(targetsTupleSet, recordsTupleSet, targets, records_seqs, self.logger, self.settings)
+
+        
+        formatter.close()
+        self.logger.debug('QGramLinker finished.')
+        return HitList(self.logger)
+
+class QGramIndexer(QGramLinker):
+    
+    def __init__(self, logger, score, settings, arguments):
+        QGramLinker.__init__(self, logger, score, settings,arguments)
+
+    def process(self, records_seqs, targets, pypaswas):
+        '''This methods creates indices and determines differences between sequences.
+        '''
+
+        
+        # step through the targets                                                                                                                                                                           
+        # step through the targets                                                                                                                                                                          
+        self.logger.debug('QGramIndexer...')
+        if self.settings.link_self == "T":
+            self.logger.info("Clearing output file")
+            formatter = pypaswas._get_formatter(self.hitlist)
+            formatter.open()
+
         indexer = None
 
         window = int(self.settings.window_length)
@@ -246,31 +321,36 @@ class QGramLinker(Aligner):
         elif self.qindexerCUDA:
             from QIndexerCUDA import QIndexerCUDA, GenomePlotter
             block = 10
-            indexStepSize=1000
+            indexStepSize=10000
             indexer = QIndexerCUDA(self.settings, self.logger, 0.1, dummySeq, int(self.settings.qgram), block, indexStepSize, nAs='A')
             #plotter = GenomePlotter(indexer, dummySeq, block, indexStepSize)                                                                                                                            
         else:
             from QIndexer import QIndexer
             indexer = QIndexer(self.settings, self.logger, 0.1, dummySeq, int(self.settings.qgram))
 
-        sequencesToProcess = records_seqs + targets
-        indexer.compositionScale = 100.0
+        sequencesToProcess = records_seqs
+        indexer.compositionScale = 1000.0
         self.logger.debug("Starting linkage process {}".format(len(sequencesToProcess)))
 
         while indexer.indicesToProcessLeft():
-            indexer.createIndexAndStore(sequencesToProcess, self.arguments[1], copyToDevice=False)
-        
-        self.hitlist = indexer.createHitlist(sequencesToProcess)
-        while self.hitlist != None:
-            if len(self.hitlist.real_hits) > 0 :
-                formatter.print_results(self.hitlist)
-            self.hitlist = indexer.createHitlist(sequencesToProcess)
+            indexer.createIndexAndStore(sequencesToProcess, self.arguments[0], copyToDevice=False)
+    
+        indexer.pickle(self.arguments[0])
+
+        if self.settings.link_self == "T":
+            from QIndexer import QIndexer
+            self.hitlist = QIndexer.createHitlist(indexer.tupleSet, {}, records_seqs, [], self.logger, self.settings)
+
+            while self.hitlist != None:
+                if len(self.hitlist.real_hits) > 0 :
+                    formatter.print_results(self.hitlist)
+                self.hitlist = QIndexer.createHitlist(indexer.tupleSet, {}, records_seqs, [], self.logger, self.settings)
+            formatter.close()
 
         if indexer != None and self.qindexerCUDA:
             indexer.pop_context()
-        
-        formatter.close()
-        self.logger.debug('QGramLinker finished.')
+            
+        self.logger.debug('QGramIndexer finished.')
         return HitList(self.logger)
 
 class ReadDistance(Aligner):

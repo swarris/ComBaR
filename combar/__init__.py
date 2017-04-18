@@ -144,6 +144,8 @@ def parse_cli(config_file):
     plotter_options = optparse.OptionGroup(parser, 'Options related to the GenomePlotter. See mapper options')
     plotter_options.add_option('--window_length', help='Precision of the plotter, given in the length of the window processed (in bases)', dest='window_length',
                               default=config.get('Plotter', 'window_length'))
+    plotter_options.add_option('--link_self', help='Will create a linked file of the input file during indexing (T/F)', dest='link_self',
+                              default=config.get('Plotter', 'link_self'))
 
     parser.add_option_group(plotter_options)
     
@@ -195,7 +197,9 @@ def parse_cli(config_file):
     if settings.config_file:
         (settings, arguments) = _override_settings(settings.config_file, settings, arguments)
 
-    if len(arguments) < 2:
+    if (len(arguments) < 2 and settings.program != "indexer"):
         raise InvalidOptionException('Missing input files')
+    if (len(arguments) != 1 and settings.program == "indexer"):
+        raise InvalidOptionException('Indexer requires single input file')
 
     return (settings, arguments)

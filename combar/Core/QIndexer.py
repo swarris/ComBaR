@@ -61,11 +61,14 @@ class QIndexer (Indexer):
         self.createIndex(sequence, fileName, retainInMemory, copyToDevice)
 
     def pickleName(self, fileName, length):
-        if self.indicesStep == None:
+        return fileName + ".Q" + str(self.qgram) + "." + str(length) + ".index"
+    """
+       if self.indicesStep == None:
             return fileName + ".Q" + str(self.qgram) + "." + str(length) + ".index"
         else:
             return fileName + ".Q" + str(self.qgram) + "." + str(length) + "." + str(self.indicesStep) + ".index"
-
+    """
+    
     def distance_calc(self,x,y):
         return numpy.linalg.norm(x.toarray() - y.toarray())/self.compositionScale
  
@@ -104,22 +107,30 @@ class QIndexer (Indexer):
                     hits[-1][hit[1]].extend([(hit, self.wSize[loc], self.distance_calc(valid, comp))])
         return hits
     
-    def createHitlist(self, sequencesToProcess):
+    @staticmethod
+    def createHitlist(tupleSetA, tupleSetB, sequences, targets, logger, settings):
         maxLinks = 10000
         maxValues = math.sqrt(maxLinks)
         processedLinks = 0
+        hitlist = None
 
-        hitlist = HitList(self.logger)
-        if len(self.tupleSet.keys())> 0:
-            keys = self.tupleSet.keys()[:maxLinks]
+        if len(tupleSetA.keys())> 0:
+            keys = tupleSetA.keys()[:maxLinks]
+            hitlist = HitList(logger)
         else:
             return None
+            
         for key in keys:
-            values = self.tupleSet[key]
+            valuesB = []
+            if key in tupleSetB:
+                valuesB = tupleSetB[key]
+            values = tupleSetA[key] + [(x[0],x[1]+len(sequences)) for x in valuesB]
             done = set()
             if len(values) > maxValues:
-                del self.tupleSet[key]
-                self.logger.warning("Extreemly highly repetative link found. Skipping this one")
+                del tupleSetA[key]
+                if key in tupleSetB:
+                    del tupleSetB[key]
+                logger.warning("Extreemly highly repetative link found. Skipping this one")
                 return hitlist
 
             # (linkA, linkB)
@@ -128,16 +139,25 @@ class QIndexer (Indexer):
                 linkA = l[0]
                 linkB = l[1]
                 if linkA != linkB and not ((linkA,linkB) in done or (linkB, linkA) in done):
-                    s = sequencesToProcess[linkA[1]]
-                    t = sequencesToProcess[linkB[1]]
+                    if linkA[1] >= len(sequences):
+                        s = targets[linkA[1]-len(sequences)]
+                    else:
+                        s = sequences[linkA[1]]
+                    if linkB[1] >= len(sequences):
+                        t = targets[linkB[1]-len(sequences)]
+                    else:
+                        t = sequences[linkB[1]]                        
                     s.distance = 1.0
                     t.distance = 1.0
-                    newHit = QGramLink(self.logger, s, t, (linkA[0],linkA[0]+1), (linkB[0], linkB[0]+1))
-                    hitlist.append(newHit)
+                    if settings.link_self == "T" or (settings.link_self == "F" and ((linkA[1] >= len(sequences) and linkB[1] < len(sequences)) or (linkA[1] < len(sequences) and linkB[1] >= len(sequences)))): 
+                        newHit = QGramLink(logger, s, t, (linkA[0],linkA[0]+1), (linkB[0], linkB[0]+1))
+                        hitlist.add(newHit)
                     done.add((linkA, linkB))
                     processedLinks += processedLinks
 
-            del self.tupleSet[key]
+            del tupleSetA[key]
+            if key in tupleSetB:
+                del tupleSetB[key]
             if processedLinks > maxLinks:
                 return hitlist
         return hitlist

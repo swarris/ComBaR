@@ -6,7 +6,7 @@ from pyPaSWAS.Core.Scores import BasicScore, CustomScore, DnaRnaScore
 from pyPaSWAS.Core.Formatters import SamFormatter, DefaultFormatter
 from pyPaSWAS import set_logger, normalize_file_path 
 from pyPaSWAS.Core.HitList import HitList 
-from combar.Core.Programs import ComBaRMapper, GenomePlotter,ReadDistance, QGramLinker
+from combar.Core.Programs import ComBaRMapper, GenomePlotter,ReadDistance, QGramLinker, QGramIndexer
 from combar.Core.Formatters import PlotterFormatter
 from combar import parse_cli
 
@@ -77,9 +77,14 @@ class ComBaR(Pypaswas):
             self.program = ComBaRMapper(self.logger, self.score, self.settings, self.arguments)
             self.logger.warning("Removing limits on length of sequences for ComBaR mapping!")
             self.settings.limit_length = 10**20
-        elif self.settings.program == "plotter":
-            self.program = QGramLinker(self.logger, self.score, self.settings, self.arguments)
-            self.logger.warning("Removing limits on length of sequences for genome plotter!")
+        elif self.settings.program in ["plotter", "indexer", "linker"]:
+            if self.settings.program == "plotter":
+                self.program = GenomePlotter(self.logger, self.score, self.settings, self.arguments)
+            elif self.settings.program == "indexer":
+                self.program = QGramIndexer(self.logger, self.score, self.settings, self.arguments)
+            else:
+                self.program = QGramLinker(self.logger, self.score, self.settings, self.arguments)
+            self.logger.warning("Removing limits on length of sequences!")
             self.settings.limit_length = 10**20
             self.logger.warning("Forcing output to csv for plotting")
             self.output_format = "plot"
@@ -118,7 +123,7 @@ class ComBaR(Pypaswas):
         while queriesToProcess:
             self.logger.info('Reading query sequences {} {}...'.format(query_start, query_end))
             try:
-                if self.settings.program == "plotter":
+                if self.settings.program in ["plotter", "linker", "indexer"]:
                     query_sequences = self._get_target_sequences(self.arguments[0], start=query_start, end=query_end)
                 else:
                     query_sequences = self._get_query_sequences(self.arguments[0], start=query_start, end=query_end)
@@ -137,8 +142,11 @@ class ComBaR(Pypaswas):
                 
                 self.logger.info('Reading target sequences {}, {}...'.format(start_index,end_index))
                 try:
-                    target_sequences = self._get_target_sequences(self.arguments[1], start=start_index, end=end_index)
-                    self.logger.info('Target sequences OK.')
+                    if self.settings.program != "indexer":
+                        target_sequences = self._get_target_sequences(self.arguments[1], start=start_index, end=end_index)
+                        self.logger.info('Target sequences OK.')
+                    else:
+                        target_sequences = query_sequences
                 except ReaderException:
                     sequencesToProcess = False
                     
