@@ -78,7 +78,7 @@ __global__ void setToZero(float *comps){
 
 __global__ void calculateQgrams(char *sequence, unsigned int q, unsigned int length, float *comps, float windowLength, float step, float fraction, char nAs) {
 	unsigned int seqLocation = threadIdx.x + INDEX_SIZE * blockIdx.x;
-	if (seqLocation < length - q) {
+	if (seqLocation < length - windowLength) {
 		int localQgram = 0;
 		int bit = 1;
 		//for (int i=q-1; i >= 0; i--) {

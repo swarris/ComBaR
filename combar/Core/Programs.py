@@ -332,10 +332,11 @@ class QGramIndexer(QGramLinker):
         indexer.compositionScale = 1000.0
         self.logger.debug("Starting linkage process {}".format(len(sequencesToProcess)))
 
-        while indexer.indicesToProcessLeft():
-            indexer.createIndexAndStore(sequencesToProcess, self.arguments[0], copyToDevice=False)
+        if not indexer.unpickle(self.arguments[0]): 
+            while indexer.indicesToProcessLeft():
+                indexer.createIndexAndStore(sequencesToProcess, self.arguments[0], copyToDevice=False)
     
-        indexer.pickle(self.arguments[0])
+            indexer.pickle(self.arguments[0])
 
         if self.settings.link_self == "T":
             from QIndexer import QIndexer

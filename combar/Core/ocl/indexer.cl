@@ -96,7 +96,7 @@ __kernel void scaleComp(__global float *comps, __global int *comps_int, float fr
 __kernel void calculateQgrams(__global char *sequence, unsigned int q, unsigned int length, volatile __global int *comps, float windowLength, float step, int fraction, char nAs) {
 	unsigned int seqLocation = get_local_id(0) + INDEX_SIZE * get_group_id(0);
 	
-	if (seqLocation < length - q) {
+	if (seqLocation < length - windowLength) {
 		int localQgram = 0;
 		int bit = 1;
 		//for (int i=q-1; i >= 0; i--) {
