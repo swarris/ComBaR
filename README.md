@@ -1,8 +1,14 @@
 ComBaR
 ========
-The composition based read mapper.
+The Composition Based Referencing platform: for DNA read mapping and genome plotting, indexing and linking.
 
-For DNA read mapping and genome plotting.
+Supported functionalities:
+- mapper: for mapping long and short reads to DNA sequences
+- plotter: for high resolution plots of two genomes
+- indexer: creating an index of any sequence file
+- linker: finding similarities between many genomes, for use in circos plots
+
+Check out the wiki (https://github.com/swarris/ComBaR/wiki) for more examples.
 
 It uses the pyPaSWAS framework for sequence alignment (https://github.com/swarris/pyPaSWAS)
 
