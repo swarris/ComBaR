@@ -5,12 +5,12 @@ bundlesFile = open(sys.argv[2], "w")
 repeatsFile = open(sys.argv[3], "w")
 links = []
 
-maxGap = 10**6
+maxGap = 10**5
 minLinks = 10
 
 maxGapRepeat = 10**4
 minLinksRepeat = 10
-repeatLinks = 10
+repeatLinks = 15
 
 numberOfBundles = 0
 totalWidth = 0
@@ -91,8 +91,10 @@ print("Number of repeated links: {}".format(numberOfRepeats))
 
 while len(links)>0:
     links =bundleLinks(links)
-print("Average width repeats: {}".format(totalWidthRepeats/numberOfRepeats))
+if numberOfRepeats > 0:
+    print("Average width repeats: {}".format(totalWidthRepeats/numberOfRepeats))
 print("Number of bundles: {}".format(numberOfBundles))
-print("Average width: {}".format(totalWidth/numberOfBundles))
+if numberOfBundles > 0:
+    print("Average width: {}".format(totalWidth/numberOfBundles))
         
                  
