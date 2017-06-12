@@ -172,7 +172,7 @@ class QIndexerCUDA(QIndexer):
                     driver.Context.synchronize() 
                     comps = numpy.ndarray(buffer=self.h_compAll_index, dtype=numpy.float32, shape=(1,len(self.h_compAll_index)))[0].tolist()
                     # add comps to tuple set
-                    for w in xrange(numberOfWindowsToCalculate):
+                    for w in xrange(numberOfWindowsToCalculate-2*int(window*self.stepFactor)):
                         count = tuple(comps[w*(len(self.character_list)+1):(w+1)*(len(self.character_list)+1)])
                         if not copyToDevice:
                             count = hashlib.sha224(str([int(x) for x in count])).hexdigest()

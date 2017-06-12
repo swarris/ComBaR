@@ -115,6 +115,7 @@ class QIndexerOCL(QIndexer):
 
     def createIndex(self, sequence, fileName = None, retainInMemory=True, copyToDevice = True):
         #QIndexer.createIndex(self, sequence, fileName, retainInMemory)
+        currentTupleSet = {}
         if retainInMemory:
             currentTuplseSet = self.tupleSet
         else:
@@ -186,7 +187,7 @@ class QIndexerOCL(QIndexer):
                     comps = cl.enqueue_map_buffer(self.queue, self.d_compAll_index, cl.map_flags.READ, 0, shape=(1,len(self.h_compAll_index)), dtype=numpy.float32)[0][0] 
 
                     # add comps to tuple set
-                    for w in xrange(numberOfWindowsToCalculate):
+                    for w in xrange(numberOfWindowsToCalculate-2*int(window*self.stepFactor)):
                         count = tuple(comps[w*(len(self.character_list)+1):(w+1)*(len(self.character_list)+1)])
                         if not copyToDevice:
                             count = hashlib.sha224(str([int(x) for x in count])).hexdigest()
