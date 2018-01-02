@@ -61,7 +61,7 @@ class QIndexer (Indexer):
         self.createIndex(sequence, fileName, retainInMemory, copyToDevice)
 
     def pickleName(self, fileName, length):
-        return fileName + ".Q" + str(self.qgram) + "." + str(length) + ".index"
+        return "{filename}.{Q}.{length}.{scale}.index".format(filename = fileName , Q= self.qgram,length= length, scale= self.compositionScale) 
     """
        if self.indicesStep == None:
             return fileName + ".Q" + str(self.qgram) + "." + str(length) + ".index"
@@ -115,7 +115,7 @@ class QIndexer (Indexer):
         hitlist = None
 
         if len(tupleSetA.keys())> 0:
-            keys = tupleSetA.keys()[:maxLinks]
+            keys = tupleSetA.keys()
             hitlist = HitList(logger)
         else:
             return None
@@ -158,6 +158,6 @@ class QIndexer (Indexer):
             del tupleSetA[key]
             if key in tupleSetB:
                 del tupleSetB[key]
-            if processedLinks > maxLinks:
-                return hitlist
+            #if processedLinks > maxLinks:
+            #    return hitlist
         return hitlist

@@ -240,7 +240,6 @@ class QGramLinker(Aligner):
             from QIndexer import QIndexer
             indexer = QIndexer(self.settings, self.logger, 0.1, dummySeq, int(self.settings.qgram))
 
-        indexer.compositionScale = 1000.0
         if not indexer.unpickle(fileName): 
             while indexer.indicesToProcessLeft():
                 indexer.createIndexAndStore(sequences, fileName, copyToDevice=False)
@@ -329,7 +328,6 @@ class QGramIndexer(QGramLinker):
             indexer = QIndexer(self.settings, self.logger, 0.1, dummySeq, int(self.settings.qgram))
 
         sequencesToProcess = records_seqs
-        indexer.compositionScale = 1000.0
         self.logger.debug("Starting linkage process {}".format(len(sequencesToProcess)))
 
         if not indexer.unpickle(self.arguments[0]): 

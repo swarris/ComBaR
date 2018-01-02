@@ -146,6 +146,8 @@ def parse_cli(config_file):
                               default=config.get('Plotter', 'window_length'))
     plotter_options.add_option('--link_self', help='Will create a linked file of the input file during indexing (T/F)', dest='link_self',
                               default=config.get('Plotter', 'link_self'))
+    plotter_options.add_option('--scale', help='Sets the scaling of the indexing. Is used to scale the q-grams counts. 1000 is very accurate, 100 is best for unrelated species.', dest='scale',
+                              default=config.get('Plotter', 'scale'))
 
     parser.add_option_group(plotter_options)
     

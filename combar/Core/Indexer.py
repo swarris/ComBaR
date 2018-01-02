@@ -22,6 +22,7 @@ class Indexer:
     readsToProcess = 30
     
     def __init__(self, settings, logger, stepFactor = 0.1, reads= []):
+        self.compositionScale = float(settings.scale)
         self.sliceDistance= float(settings.maximum_distance)
         self.settings = settings
         self.logger = logger
@@ -140,7 +141,7 @@ class Indexer:
         return swSeqRecord    
             
     def pickleName(self, fileName, length):
-        return fileName + "." + str(length) + ".index"
+        return "{filename}.{length}.{scale}.index".format(filename = fileName , length= length, scale= self.compositionScale)
 
     def pickle(self, fileName, window = None):
         try:

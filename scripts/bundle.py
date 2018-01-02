@@ -4,9 +4,9 @@ from collections import defaultdict
 linkFile = open(sys.argv[1],"r")
 bundleFile = open(sys.argv[2],"w")
 
-minDistance = 100
-maxDistance = 10**4
-minLinks = 10
+minDistance = 500
+maxDistance = 10**5
+minLinks = 5
 
 links = {}
 
@@ -88,7 +88,10 @@ for l in links:
 #                        chr2[1] = b[1]
             if b[2] != currentBundle or b == links[l][d][-1]:
                 if bundleSize >= minLinks and abs(chr1[0] - chr1[1]) > minDistance and abs(chr2[0] - chr2[1]) > minDistance:
-                    bundleFile.write("{}\t{}\t{}\t{}\t{}\t{}\t{},bundle={},size={}\n".format(l[0],chr1[0],chr1[1], l[1],chr2[0],chr2[1], d, currentBundle, bundleSize))
+                    if "-1" in d:
+                        bundleFile.write("{}\t{}\t{}\t{}\t{}\t{}\t{},bundle={},size={}\n".format(l[0],chr1[0],chr1[1], l[1],chr2[1],chr2[0], d, currentBundle, bundleSize))
+                    else:
+                        bundleFile.write("{}\t{}\t{}\t{}\t{}\t{}\t{},bundle={},size={}\n".format(l[0],chr1[0],chr1[1], l[1],chr2[0],chr2[1], d, currentBundle, bundleSize))
                 currentBundle = b[2]
                 bundleSize = 1
                 chr1 = [0,0]
